@@ -382,7 +382,7 @@ class OpenAI(LLM):
         openai.organization = prev_org
         openai.api_type = prev_type
         openai.api_version = prev_version
-        openai.api_base = prev_base
+        openai.base_url = prev_base
         
         return out
 
