@@ -67,7 +67,8 @@ def prompt_to_messages(prompt):
 
 async def add_text_to_chat_mode_generator(chat_mode):
     in_function_call = False
-    async for resp in chat_mode:
+    async for part in chat_mode:
+        resp = part.model_dump()
         if "choices" in resp:
             for c in resp['choices']:
                 
@@ -111,6 +112,7 @@ def add_text_to_chat_mode(chat_mode):
     if isinstance(chat_mode, (types.AsyncGeneratorType, types.GeneratorType)):
         return add_text_to_chat_mode_generator(chat_mode)
     else:
+        chat_mode = chat_mode.model_dump()
         for c in chat_mode['choices']:
             c['text'] = c['message']['content']
         return chat_mode
@@ -376,6 +378,7 @@ class OpenAI(LLM):
             out = add_text_to_chat_mode(out)
         else:
             out = await client.completions.create(**kwargs)
+            out = out.model_dump()
         
         # restore the params of the openai library
         openai.api_key = prev_key
