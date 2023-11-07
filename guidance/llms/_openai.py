@@ -372,7 +372,7 @@ class OpenAI(LLM):
             del kwargs['echo']
             del kwargs['logprobs']
             # print(kwargs)
-            out = await openai.chat.completions.acreate(**kwargs)
+            out = await client.chat.completions.create(**kwargs)
             out = add_text_to_chat_mode(out)
         else:
             out = await client.completions.create(**kwargs)
