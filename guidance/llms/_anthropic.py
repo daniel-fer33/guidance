@@ -117,8 +117,7 @@ async def add_text_to_chat_mode_generator(chat_mode_gen):
             yield delta_out
         elif event_type == 'message_stop':
             delta_out['type'] = 'message_stop'
-            yield delta_out
-            break
+            # break
         else:
             raise ValueError(f"Stream event not found: {event_type} {event.dict()}")
 
@@ -317,8 +316,8 @@ class Anthropic(LLM):
 
                 list_out.append(out)
                 yield out
-                if all_done or curr_out.get('type', None) == 'message_stop':
-                    gen.aclose()
+                if all_done or out.get('type', None) == 'message_stop':
+                    #gen.close()
                     break
 
         # if we have a cached output, emit it
