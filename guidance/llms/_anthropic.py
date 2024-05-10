@@ -67,7 +67,7 @@ def anthropic_messages_response_to_opeanai_completion_dict(messages_response):
         'end_turn': 'stop',
         'max_tokens': 'length',
         'stop_sequence': 'stop'
-    }.get(out.get('stop_reason', None), None)
+    }.get(out.get('stop_reason', out.get('delta', {}).get('stop_reason', None)), None)
     if 'content' in out:
         out['choices'] = [
             dict(
@@ -91,6 +91,38 @@ def anthropic_messages_response_to_opeanai_completion_dict(messages_response):
     return out
 
 
+async def add_text_to_chat_mode_generator(chat_mode_gen):
+    delta_out = None
+    async for event in chat_mode_gen:
+        event_type = event.type
+        #log.debug(f"[add_text_to_chat_mode_generator | resp]: {event_type} {event.dict()}\n")
+        resp = anthropic_messages_response_to_opeanai_completion_dict(event)
+
+        if event_type == 'message_start':
+            delta_out = resp
+        elif event_type == 'content_block_start':
+            delta_out['choices'].append({"text": ''})
+        elif event_type == 'content_block_delta':
+            delta_out['choices'][resp['index']]['text'] = resp['delta']['text']
+            yield delta_out
+        elif event_type == 'content_block_stop':
+            pass
+        elif event_type == 'message_delta':
+            delta_out['choices'][-1]['text'] = ''
+            if 'finish_reason' in resp:
+                delta_out['finish_reason'] = resp['finish_reason']
+            if ('usage' in delta_out and 'output_tokens' in delta_out['usage'] and
+                    'usage' in resp and 'output_tokens' in resp['usage']):
+                delta_out['usage']['output_tokens'] += resp['usage']['output_tokens']
+            yield delta_out
+        elif event_type == 'message_stop':
+            delta_out['type'] = 'message_stop'
+            yield delta_out
+            break
+        else:
+            raise ValueError(f"Stream event not found: {event_type} {event.dict()}")
+
+
 def add_text_to_chat_mode(chat_mode):
     if isinstance(chat_mode, (types.AsyncGeneratorType, types.GeneratorType, AsyncStream)):
         return add_text_to_chat_mode_generator(chat_mode)
@@ -99,6 +131,29 @@ def add_text_to_chat_mode(chat_mode):
         for c in chat_mode['choices']:
             c['text'] = c['message']['content']
         return chat_mode
+
+
+def merge_stream_chunks(first_chunk, second_chunk):
+    """ This merges two stream responses together.
+    """
+
+    out = copy.deepcopy(first_chunk)
+
+    # merge the choices
+    for i in range(len(out['choices'])):
+        out_choice = out['choices'][i]
+        second_choice = second_chunk['choices'][i]
+        out_choice['text'] += second_choice['text']
+        if 'index' in second_choice:
+            out_choice['index'] = second_choice['index']
+        if 'finish_reason' in second_choice:
+            out_choice['finish_reason'] = second_choice['finish_reason']
+        if out_choice.get('logprobs', None) is not None:
+            out_choice['logprobs']['token_logprobs'] += second_choice['logprobs']['token_logprobs']
+            out_choice['logprobs']['top_logprobs'] += second_choice['logprobs']['top_logprobs']
+            out_choice['logprobs']['text_offset'] = second_choice['logprobs']['text_offset']
+
+    return out
 
 
 class Anthropic(LLM):
@@ -177,6 +232,101 @@ class Anthropic(LLM):
 
     def end_of_text(self):
         return "<|endoftext|>"
+
+    @classmethod
+    async def stream_then_save(cls, gen, key, stop_regex, n):
+        assert not stop_regex, "Currently `stop_regex` is not implemented for Anthropic API"
+
+        list_out = []
+        cached_out = None
+
+        # init stop_regex variables
+        if stop_regex is not None:
+            if isinstance(stop_regex, str):
+                stop_patterns = [regex.compile(stop_regex)]
+            else:
+                stop_patterns = [regex.compile(pattern) for pattern in stop_regex]
+
+            current_strings = ["" for _ in range(n)]
+            # last_out_pos = ["" for _ in range(n)]
+
+        # iterate through the stream
+        all_done = False
+        async for curr_out in gen:
+
+            # if we have a cached output, extend it with the current output
+            if cached_out is not None:
+                out = merge_stream_chunks(cached_out, curr_out)
+            else:
+                out = curr_out
+
+            # check if we have stop_regex matches
+            found_partial = False
+            if stop_regex is not None:
+
+                # keep track of the generated text so far
+                for i, choice in enumerate(curr_out['choices']):
+                    current_strings[i] += choice['text']
+
+                # check if all of the strings match a stop string (and hence we can stop the batch inference)
+                all_done = True
+                for i in range(len(current_strings)):
+                    found = False
+                    for s in stop_patterns:
+                        if s.search(current_strings[i]):
+                            found = True
+                    if not found:
+                        all_done = False
+                        break
+
+                # find where trim off the stop regex matches if needed (and look for partial matches)
+                stop_pos = [1e10 for _ in range(n)]
+                stop_text = [None for _ in range(n)]
+                for i in range(len(current_strings)):
+                    for s in stop_patterns:
+                        m = s.search(current_strings[i], partial=True)
+                        if m:
+                            span = m.span()
+                            if span[1] > span[0]:
+                                if m.partial:  # we might be starting a stop sequence, so we can't emit anything yet
+                                    found_partial = True
+                                    break
+                                else:
+                                    stop_text[i] = current_strings[i][span[0]:span[1]]
+                                    stop_pos[i] = min(span[0], stop_pos[i])
+                    if stop_pos != 1e10:
+                        stop_pos[i] = stop_pos[i] - len(current_strings[i])  # convert to relative position from the end
+
+            # if we might be starting a stop sequence, we need to cache the output and continue to wait and see
+            if found_partial:
+                cached_out = out
+                continue
+
+            # if we get here, we are not starting a stop sequence, so we can emit the output
+            else:
+                cached_out = None
+
+                if stop_regex is not None:
+                    for i in range(len(out['choices'])):
+                        if stop_pos[i] < len(out['choices'][i]['text']):
+                            out['choices'][i] = out['choices'][
+                                i].to_dict()  # because sometimes we might need to set the text to the empty string (and OpenAI's object does not like that)
+                            out['choices'][i]['text'] = out['choices'][i]['text'][:stop_pos[i]]
+                            out['choices'][i]['stop_text'] = stop_text[i]
+                            out['choices'][i]['finish_reason'] = "stop"
+
+                list_out.append(out)
+                yield out
+                if all_done or curr_out.get('type', None) == 'message_stop':
+                    gen.aclose()
+                    break
+
+        # if we have a cached output, emit it
+        if cached_out is not None:
+            list_out.append(cached_out)
+            yield out
+
+        cls.cache[key] = list_out
 
     # Define a function to add a call to the deque
     def add_call(self):
@@ -323,8 +473,7 @@ class AnthropicSession(LLMSession):
                         f"Too many (more than {self.llm.max_retries}) Anthropic API errors in a row!")
 
             if stream:
-                #return self.llm.stream_then_save(out, key, stop_regex, n)
-                raise NotImplementedError
+                return self.llm.stream_then_save(out, key, stop_regex, n)
             else:
                 llm_cache[key] = out
 
