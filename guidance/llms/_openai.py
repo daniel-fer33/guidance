@@ -125,6 +125,7 @@ def add_text_to_chat_mode(chat_mode):
 
 class OpenAI(LLM):
     llm_name: str = "openai"
+    chat_model_pattern: str = r'^(gpt-3\.5-turbo|gpt-4|gpt-4-vision|gpt-4-turbo|gpt-4o)(-\d+k)?(-\d{4})?(-vision)?(-instruct)?(-\d{2})?(-\d{2})?(-preview)?$'
 
     def __init__(self, model=None, caching=True, max_retries=5, max_calls_per_min=60,
                  api_key=None, api_type="open_ai", api_base=None, api_version=None, deployment_id=None,
@@ -159,8 +160,7 @@ class OpenAI(LLM):
         # auto detect chat completion mode
         if chat_mode == "auto":
             # parse to determine if the model need to use the chat completion API
-            chat_model_pattern = r'^(gpt-3\.5-turbo|gpt-4|gpt-4-turbo)(-\d+k)?(-\d{4})?(-preview)?$'
-            if re.match(chat_model_pattern, model):
+            if re.match(self.chat_model_pattern, model):
                 chat_mode = True
             else:
                 chat_mode = False
@@ -651,6 +651,7 @@ class OpenAISession(LLMSession):
             functions = extract_function_defs(prompt)
 
             fail_count = 0
+            err = None
             while True:
                 try_again = False
                 try:
@@ -678,7 +679,11 @@ class OpenAISession(LLMSession):
                         call_args["logit_bias"] = {str(k): v for k,v in logit_bias.items()} # convert keys to strings since that's the open ai api's format
                     out = await self.llm.caller(**call_args)
 
-                except (openai.RateLimitError, openai.APIConnectionError, openai.APIStatusError, openai.APIError, openai.APITimeoutError):
+                except (openai.RateLimitError,
+                        openai.APIConnectionError,
+                        openai.APIStatusError,
+                        openai.APIError,
+                        openai.APITimeoutError) as err:
                     await asyncio.sleep(3)
                     try_again = True
                     fail_count += 1
@@ -687,7 +692,9 @@ class OpenAISession(LLMSession):
                     break
 
                 if fail_count > self.llm.max_retries:
-                    raise Exception(f"Too many (more than {self.llm.max_retries}) OpenAI API errors in a row!")
+                    raise Exception(
+                        f"Too many (more than {self.llm.max_retries}) Anthropic API errors in a row! \n"
+                        f"Last error message: {err}")
 
             if stream:
                 return self.llm.stream_then_save(out, key, stop_regex, n)
