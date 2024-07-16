@@ -450,6 +450,10 @@ class Program:
                     await self._executor.run(llm_session)
             self._text = self._variables["@raw_prefix"]
 
+            # update the display with the final output
+            self.update_display(last=True)
+            await self.update_display.done()
+
         # if the execution failed, capture the exception so it can be re-raised
         # in the main coroutine
         except Exception as exception:
@@ -458,10 +462,6 @@ class Program:
         finally:
             # delete the executor and so mark the program as not executing
             self._executor = None
-
-            # update the display with the final output
-            self.update_display(last=True)
-            await self.update_display.done()
 
             # fire an event noting that execution is complete (this will release any await calls waiting on the program)
             self._execute_complete.set()
