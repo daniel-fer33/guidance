@@ -426,7 +426,7 @@ class OpenAI(LLM):
             "echo": kwargs.get("echo", False)
         }
 
-        # "o1":
+        # "o1-":
         #  - 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.
         #  - 'temperature' does not support 0 with this model. Only the default (1) value is supported.
         #  - 'stop' is not supported with this model.
@@ -713,6 +713,18 @@ class OpenAISession(LLMSession):
                     if logit_bias is not None:
                         call_args["logit_bias"] = {str(k): v for k,v in logit_bias.items()} # convert keys to strings since that's the open ai api's format
                     out = await self.llm.caller(**call_args)
+                    print(out)
+
+                    # "o1-":
+                    # Response will be empty if couldn't complete the request within the 'max_completion_tokens'
+                    # For now, we'll raise an error if this happens
+                    if call_args['model'].startswith('o1-'):
+                        if out['choices'][0].get('finish_reason', None) == 'length' \
+                                and out['choices'][0].get('message', {}).get('content', None) == '':
+                            raise Exception(f"Model 'o1-' returned empty response because couldn't "
+                                            f"complete the request within 'max_completion_tokens': "
+                                            f"{call_args['max_completion_tokens']}")
+                        print(out['choices'][0])
 
                 except (openai.RateLimitError,
                         openai.APIConnectionError,
