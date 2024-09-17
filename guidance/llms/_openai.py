@@ -184,6 +184,13 @@ class OpenAI(LLM):
             api_base = os.environ.get("OPENAI_API_BASE", None) or os.environ.get("OPENAI_ENDPOINT", None) # ENDPOINT is deprecated
 
         import tiktoken
+
+        # TODO: Remove.
+        # Currently (17/09/2024) tiktoken doesn't support openai "o1" models.
+        # https://github.com/openai/tiktoken/issues/337
+        from tiktoken.model import MODEL_PREFIX_TO_ENCODING, MODEL_TO_ENCODING
+        MODEL_PREFIX_TO_ENCODING.update({"o1-": "o200k_base"})
+
         if encoding_name is None:
             encoding_name = tiktoken.encoding_for_model(model).name
         self._tokenizer = tiktoken.get_encoding(encoding_name)
