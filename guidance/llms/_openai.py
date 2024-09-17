@@ -425,6 +425,20 @@ class OpenAI(LLM):
             'stop': kwargs.get("stop", None),
             "echo": kwargs.get("echo", False)
         }
+
+        # "o1":
+        #  - 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.
+        #  - 'temperature' does not support 0 with this model. Only the default (1) value is supported.
+        #  - 'stop' is not supported with this model.
+        #  - 'stream' does not support true with this model. Only the default (false) value is supported.
+        if data['model'].startswith('o1-'):
+            data.update({
+                "max_completion_tokens": kwargs.get("max_completion_tokens", kwargs.get("max_tokens", None)),
+                "stream": False
+            })
+            del data['max_tokens']
+            del data['stop']
+
         if self.chat_mode:
             data['messages'] = prompt_to_messages(data['prompt'])
             del data['prompt']
@@ -677,6 +691,20 @@ class OpenAISession(LLMSession):
                         "stream": stream,
                         **completion_kwargs
                     }
+
+                    # "o1-":
+                    #  - 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.
+                    #  - 'temperature' does not support 0 with this model. Only the default (1) value is supported.
+                    #  - 'stop' is not supported with this model.
+                    #  - 'stream' does not support true with this model. Only the default (false) value is supported.
+                    if call_args['model'].startswith('o1-'):
+                        call_args.update({
+                            "max_completion_tokens": completion_kwargs.get('max_completion_tokens', max_tokens),
+                            "stream": False
+                        })
+                        del call_args['max_tokens']
+                        del call_args['stop']
+
                     if functions is None:
                         if "function_call" in call_args:
                             del call_args["function_call"]
