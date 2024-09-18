@@ -16,6 +16,13 @@ import regex
 from ._llm import LLM, LLMSession, SyncSession
 
 
+# After the changes introduced in PR #1488 (https://github.com/openai/openai-python/pull/1488),
+# in some cases, pytest is not properly finalizing after all tests pass successfully.
+# This is a temporary of the issue
+from openai._base_client import get_platform
+PLATFORM = get_platform()
+
+
 class MalformedPromptException(Exception):
     pass
 
@@ -380,6 +387,7 @@ class OpenAI(LLM):
         assert openai.api_key is not None, "You must provide an OpenAI API key to use the OpenAI LLM. Either pass it in the constructor, set the OPENAI_API_KEY environment variable, or create the file ~/.openai_api_key with your key in it."
 
         client = AsyncOpenAI(api_key=self.api_key)
+        client._platform = PLATFORM
 
         if self.chat_mode:
             kwargs['messages'] = prompt_to_messages(kwargs['prompt'])
