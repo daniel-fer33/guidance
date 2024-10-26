@@ -63,7 +63,7 @@ You are a helpful assistant.
 {{~/user}}
 {{#assistant~}}
 {{gen "answer" max_tokens=5 stream=False}}
-{{~/assistant}}''')
+{{~/assistant}}''', stream=False)
     prompt = prompt(conversation_question='Whats is the meaning of life??')
     assert len(prompt['answer']) > 0
 
