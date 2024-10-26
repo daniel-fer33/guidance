@@ -91,13 +91,13 @@ Indeed
     assert str(out) == '<|im_start|>system\nYou are a helpful assistant<|im_end|><|im_start|>user\nThis is great!<|im_end|><|im_start|>assistant\nIndeed<|im_end|>'
 
 def test_rest_nostream():
-    guidance.llm = get_llm('openai:text-davinci-003', endpoint="https://api.openai.com/v1/completions", rest_call=True)
+    guidance.llm = get_llm('openai:babbage-002', endpoint="https://api.openai.com/v1/completions", rest_call=True)
     a = guidance('''Hello,  my name is{{gen 'name' stream=False max_tokens=5}}''', stream=False)
     a = a()
     assert len(a['name']) > 0
 
 def test_rest_stream():
-    guidance.llm = get_llm('openai:text-davinci-003', endpoint="https://api.openai.com/v1/completions", rest_call=True)
+    guidance.llm = get_llm('openai:babbage-002', endpoint="https://api.openai.com/v1/completions", rest_call=True)
     a = guidance('''Hello,  my name is{{gen 'name' stream=True max_tokens=5}}''', stream=False)
     a = a()
     assert len(a['name']) > 0

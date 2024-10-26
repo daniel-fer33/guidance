@@ -2,7 +2,7 @@ import guidance
 import pytest
 from ..utils import get_llm
 
-@pytest.mark.parametrize("llm", ["transformers:gpt2", "openai:text-curie-001"])
+@pytest.mark.parametrize("llm", ["transformers:gpt2", ])
 def test_select(llm):
     """ Test the behavior of `select`.
     """
@@ -12,7 +12,7 @@ def test_select(llm):
     out = program()
     assert out["name"] in ["Yes", "No"]
 
-@pytest.mark.parametrize("llm", ["transformers:gpt2", "openai:text-curie-001"])
+@pytest.mark.parametrize("llm", ["transformers:gpt2", ])
 def test_select_longtext(llm):
     """ Test the behavior of `select`.
     """
@@ -23,7 +23,7 @@ def test_select_longtext(llm):
     out = program()
     assert out["name"] in ["No because of all the other ones.", "Yes because I saw it."]
 
-@pytest.mark.parametrize("llm", ["transformers:gpt2", "openai:text-curie-001"])
+@pytest.mark.parametrize("llm", ["transformers:gpt2", ])
 def test_select_with_list(llm):
     """ Test the behavior of `select` in non-block mode.
     """
@@ -35,7 +35,7 @@ def test_select_with_list(llm):
     for k in out["logprobs"]:
         assert out["logprobs"][k] <= 0
 
-@pytest.mark.parametrize("llm", ["transformers:gpt2", "openai:text-curie-001"])
+@pytest.mark.parametrize("llm", ["transformers:gpt2", ])
 def test_select_list_append(llm):
     """ Test the behavior of `select` with list_append=True.
     """
@@ -47,7 +47,7 @@ def test_select_list_append(llm):
     for v in out["name"]:
         assert v in ["Yes", "No"]
 
-@pytest.mark.parametrize("llm", ["transformers:gpt2", "openai:text-curie-001"])
+@pytest.mark.parametrize("llm", ["transformers:gpt2", ])
 def test_select_names(llm):
     """ Test the behavior of `select` with hard to guess terms.
     """
@@ -101,7 +101,7 @@ def test_select_multi_path_with_suffix():
     assert abs(1 - np.exp([l for l in out["probs"].values()]).sum()) < 1e-5
     assert out["sentence"] in options
 
-@pytest.mark.parametrize("llm", ["transformers:gpt2", "openai:text-curie-001"])
+@pytest.mark.parametrize("llm", ["transformers:gpt2", ])
 def test_select_odd_spacing(llm):
     """ Test the behavior of `select` with list_append=True.
     """
@@ -113,7 +113,7 @@ def test_select_odd_spacing(llm):
     prompt = prompt(example='I hate tacos.')
     assert prompt["answer"] in [" Yes", " Nein", " Maybe"]
 
-@pytest.mark.parametrize("llm", ["transformers:gpt2", "openai:text-curie-001"])
+@pytest.mark.parametrize("llm", ["transformers:gpt2",])
 def test_overlapping_options(llm):
     """ Test the behavior of `select` when one option is a prefix of another.
     """
@@ -124,7 +124,7 @@ def test_overlapping_options(llm):
     out = program(options=options)
     assert out["selected"] in options
 
-@pytest.mark.parametrize("llm", ["transformers:gpt2", "openai:text-curie-001"])
+@pytest.mark.parametrize("llm", ["transformers:gpt2", ])
 def test_non_greedy_tokenize(llm):
     """ Test the behavior of `select` when the GPT tokenizer is not greedy (odd space handling).
     """
@@ -140,7 +140,7 @@ Answer:{{#select "answer" logprobs='logprobs'}}
     executed_program = program(example='I hate tacos')
     assert executed_program["answer"] in [" \n    Yes", " \n    No", " \n    Maybe\n"]
 
-@pytest.mark.parametrize("llm", ["transformers:gpt2", "openai:text-curie-001"])
+@pytest.mark.parametrize("llm", ["transformers:gpt2", ])
 def test_variable_starts_with_or(llm):
     """ Test the behavior of `select` when the variable starts with or.
     """
