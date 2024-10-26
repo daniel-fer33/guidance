@@ -131,8 +131,7 @@ class TransformersSession(LLMSession):
                     # would delete all but the last input_ids, and we have already removed
                     # the correct prefix from the input_ids (which is not always all but the last one)
                     if len(self._prefix_cache) > 0:
-                        
-                        kwargs["past"] = None
+
                         input_ids = input_ids[:,len(self._prefix_cache):]
                         # if "attention_mask" in kwargs:
                         #     kwargs["attention_mask"] = kwargs["attention_mask"][:,len(self._prefix_cache):]
