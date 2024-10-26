@@ -56,7 +56,7 @@ def prompt_to_messages(prompt):
 
 
 def anthropic_messages_response_to_opeanai_completion_dict(messages_response):
-    out = messages_response.dict()
+    out = messages_response.model_dump()
     if 'message' in out:
         # Stream
         message_type = out['type']
@@ -454,7 +454,9 @@ class AnthropicSession(LLMSession):
                     }
 
                     call_args = {k: v for k, v in call_args.items() if v is not None}
-                    out = await self.llm.caller(**call_args)
+                    # TODO: Anthropic async call leave open vent loop. So far couldn't find the issue
+                    #out = await self.llm.caller(**call_args)
+                    out = asyncio.run(self.llm.caller(**call_args))
 
                 except (anthropic.RateLimitError,
                         anthropic.APIConnectionError,
