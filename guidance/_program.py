@@ -206,7 +206,6 @@ class Program:
         # build and display the html
         html = self._build_html(self.marked_text)
         self._display_html(html)
-        
 
     async def _await_finish_execute(self):
         """Used by self.__await__ to wait for the program to complete."""
@@ -278,7 +277,6 @@ class Program:
 
         # if we are not in async mode, we need to create a new event loop and run the program in it until it is done
         else:
-
             # apply nested event loop patch if needed
             try:
                 other_loop = asyncio.get_event_loop()
@@ -287,12 +285,18 @@ class Program:
                 pass
             
             loop = asyncio.new_event_loop()
-            update_task = loop.create_task(new_program.update_display.run()) # start the display updater
+            update_task = loop.create_task(new_program.update_display.run())  # start the display updater
             new_program._tasks.append(update_task)
             if new_program.stream:
                 return self._stream_run(loop, new_program)
             else:
                 loop.run_until_complete(new_program.execute())
+
+                # Close the event loop
+                for task in new_program._tasks:
+                    task.cancel()
+                loop.run_until_complete(asyncio.sleep(0))
+                loop.close()
 
         return new_program
     
