@@ -454,9 +454,7 @@ class AnthropicSession(LLMSession):
                     }
 
                     call_args = {k: v for k, v in call_args.items() if v is not None}
-                    # TODO: Anthropic async call leave open vent loop. So far couldn't find the issue
-                    #out = await self.llm.caller(**call_args)
-                    out = asyncio.run(self.llm.caller(**call_args))
+                    out = await self.llm.caller(**call_args)
 
                 except (anthropic.RateLimitError,
                         anthropic.APIConnectionError,
