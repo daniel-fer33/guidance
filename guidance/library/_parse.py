@@ -1,7 +1,8 @@
 from .._utils import ContentCapture
 from .._grammar import grammar
 
-async def parse(string, name=None, hidden=False, _parser_context=None):
+
+async def parse(string, name=None, hidden=False, hidden_prefix=False, _parser_context=None):
     ''' Parse a string as a guidance program.
 
     This is useful for dynamically generating and then running guidance programs (or parts of programs).
@@ -12,10 +13,19 @@ async def parse(string, name=None, hidden=False, _parser_context=None):
         The string to parse.
     name : str
         The name of the variable to set with the generated content.
+    hidden : bool, optional
+        If `True`, the generated content is hidden; otherwise, it is visible. Defaults to `False`.
+    hidden_prefix : bool, optional
+        If `True`, the previous content (prefix) is hidden; otherwise, it is visible. Defaults to `False`.
     '''
 
     parser = _parser_context['parser']
     variable_stack = _parser_context['variable_stack']
+    prev_raw_prefix = variable_stack["@raw_prefix"]
+
+    if hidden_prefix:
+        # Hide previous prefix
+        variable_stack["@raw_prefix"] = ""
 
     # capture the content of the block
     with ContentCapture(variable_stack, hidden) as new_content:
@@ -27,3 +37,10 @@ async def parse(string, name=None, hidden=False, _parser_context=None):
         # save the content in a variable if needed
         if name is not None:
             variable_stack[name] = str(new_content)
+
+    if hidden_prefix:
+        # Recover state
+        new_raw_prefix = variable_stack["@raw_prefix"]
+        variable_stack["@raw_prefix"] = prev_raw_prefix
+        if not hidden:
+            variable_stack["@raw_prefix"] += new_raw_prefix
