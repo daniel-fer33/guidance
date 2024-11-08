@@ -56,6 +56,15 @@ Where there is no guidance, a people falls, but in an abundance of counselors th
     assert re.fullmatch(r"[0-9]", executed_program["chapter"])
     assert re.fullmatch(r"[0-9]+", executed_program["verse"])
 
+def test_alt_llm():
+    """Test that LM generation works alternative llm argument ."""
+
+    llm = guidance.llms.Mock(" Sue")
+    alt_llm = guidance.llms.Mock(" Mia")
+    prompt = guidance("Hello my name is{{gen 'name' max_tokens=5}}{{gen 'name' max_tokens=5 llm_alt_model=alt_llm}}. Call me just{{gen 'name' max_tokens=5}}", llm=llm)
+    out = prompt(alt_llm=alt_llm)
+    assert str(out) =="Hello my name is Sue Mia. Call me just Sue"
+
 @pytest.mark.parametrize("llm", ["transformers:gpt2", "transformers:facebook/opt-350m"])
 def test_multi_token_healing(llm):
     """Test if we can heal prompt boundaries where we need to back up two tokens."""
