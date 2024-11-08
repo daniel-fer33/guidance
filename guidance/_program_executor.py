@@ -47,21 +47,7 @@ class ProgramExecutor():
         # text = re.sub(r"{{>(.*?)}}", replace_partial, program._text)
 
         # parse the program text
-        try:
-            self.parse_tree = grammar.parse_string(program._text)
-        except (pp.ParseException, pp.ParseSyntaxException) as e:
-            initial_str = program._text[max(0, e.loc-40):e.loc]
-            initial_str = initial_str.split("\n")[-1] # trim off any lines before the error
-            next_str = program._text[e.loc:e.loc+40]
-            error_string = str(e)
-            if next_str.startswith("{{#") or next_str.startswith("{{~#"):
-                error_string += "\nPerhaps the block command was not correctly closed?"
-            msg = error_string + "\n\n"+initial_str
-            # msg += "\033[91m" + program._text[e.loc:e.loc+40] + "\033[0m\n"
-            msg += program._text[e.loc:e.loc+40] + "\n"
-            msg += " " * len(initial_str) + "^\n"
-
-            raise SyntaxException(msg, e) from None
+        self.parse_tree = parse_program_string(program._text)
             
     # def _check_for_simple_error(self, text):
     #     """ Check for a simple errors in the program text, and give nice error messages.
@@ -169,7 +155,7 @@ class ProgramExecutor():
         
         elif node_name == 'partial':
             partial_program = variable_stack[node[0]["name"]]
-            tree = grammar.parse_string(partial_program._text)
+            tree = parse_program_string(partial_program._text)
             partial_args = [await self.visit(child, variable_stack) for child in node["command_call"][1:]]
             args = []
             kwargs = {}
@@ -649,6 +635,25 @@ class NamedArgument:
 
 class StopCompletion(Exception):
     pass
+
+
+def parse_program_string(string):
+    try:
+        return grammar.parse_string(string)
+    except (pp.ParseException, pp.ParseSyntaxException) as e:
+        initial_str = string[max(0, e.loc - 40):e.loc]
+        initial_str = initial_str.split("\n")[-1]  # trim off any lines before the error
+        next_str = string[e.loc:e.loc + 40]
+        error_string = str(e)
+        if next_str.startswith("{{#") or next_str.startswith("{{~#"):
+            error_string += "\nPerhaps the block command was not correctly closed?"
+        msg = error_string + "\n\n" + initial_str
+        # msg += "\033[91m" + program._text[e.loc:e.loc+40] + "\033[0m\n"
+        msg += string[e.loc:e.loc + 40] + "\n"
+        msg += " " * len(initial_str) + "^\n"
+
+        raise SyntaxException(msg, e) from None
+
 
 class SyntaxException(Exception):
     def __init__(self, msg, pyparsing_exception=None):
