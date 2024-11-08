@@ -1,5 +1,5 @@
 from .._utils import ContentCapture
-from .._grammar import grammar
+from .._program_executor import parse_program_string
 
 
 async def parse(string, name=None, hidden=False, hidden_prefix=False, _parser_context=None):
@@ -31,7 +31,7 @@ async def parse(string, name=None, hidden=False, hidden_prefix=False, _parser_co
     with ContentCapture(variable_stack, hidden) as new_content:
 
         # parse and visit the given string
-        subtree = grammar.parse_string(string)
+        subtree = parse_program_string(string)
         new_content += await parser.visit(subtree, variable_stack)
 
         # save the content in a variable if needed
