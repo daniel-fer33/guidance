@@ -757,7 +757,8 @@ _built_ins = {
     "callable": commands.callable,
     "len": commands.len,
     "range": commands.range,
-    "UNARY_OPERATOR_not": commands.not_
+    "UNARY_OPERATOR_not": commands.not_,
+    "assert": commands.assert_
 }
 
 class DisplayThrottler():
