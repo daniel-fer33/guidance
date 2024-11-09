@@ -188,7 +188,7 @@ class Anthropic(LLM):
             except:
                 pass
 
-        self._tokenizer = anthropic.Client().get_tokenizer()
+        self._tokenizer = anthropic.Client().beta.messages.count_tokens
         self.chat_mode = True  # Only Anthropic chat-mode is currently supported
 
         self.allowed_special_tokens = allowed_special_tokens
