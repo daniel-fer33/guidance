@@ -146,6 +146,7 @@ async def gen(name=None, stop=None, stop_regex=None, save_stop_text=False, max_t
     assert parser.llm_session is not None, "You must set an LLM for the program to use (use the `llm=` parameter) before you can use the `gen` command."
 
     # Replace LLM Session with Alternated LLM Model Session
+    prev_llm_session = parser.llm_session
     if llm_alt_model is not None:
         if isinstance(llm_alt_model, str):
             parser.llm_session = load_alt_model(llm_alt_model).session(asynchronous=True)
@@ -220,7 +221,6 @@ async def gen(name=None, stop=None, stop_regex=None, save_stop_text=False, max_t
         if parser.should_stop:
             parser.executing = False
             parser.should_stop = False
-        return
     else:
         assert not isinstance(gen_obj, list), "Streaming is only supported for n=1"
         generated_values = [prefix+choice["text"]+suffix for choice in gen_obj["choices"]]
@@ -257,9 +257,12 @@ async def gen(name=None, stop=None, stop_regex=None, save_stop_text=False, max_t
                 else:
                     out += value
             variable_stack["@raw_prefix"] += out + "--}}{{!--" + f"GMARKERmany_generate_end${id}$" + "--}}"
-            return
             # return "{{!--GMARKERmany_generate_start$$}}" + "{{!--GMARKERmany_generate$$}}".join([v for v in generated_values]) + "{{!--GMARKERmany_generate_end$$}}"
             # return "".join([v for v in generated_values])
         else:
             # pop off the variable context we pushed since we are hidden
             variable_stack.pop()
+
+    # Restore previous llm session
+    if llm_alt_model is not None:
+        parser.llm_session = prev_llm_session
