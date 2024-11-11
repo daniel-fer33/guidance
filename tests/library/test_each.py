@@ -1,12 +1,14 @@
 import guidance
 from ..utils import get_llm
 
+
 def test_each():
     """ Test an each loop.
     """
 
     prompt = guidance("Hello, {{name}}!{{#each names}} {{this}}{{/each}}")
     assert str(prompt(name="Guidance", names=["Bob", "Sue"])) == "Hello, Guidance! Bob Sue"
+
 
 def test_each_with_objects():
     """ Test an each loop with objects.
@@ -19,6 +21,7 @@ def test_each_with_objects():
     )
     assert str(out) == "Hello, Guidance! Bob Sue"
 
+
 def test_missing_list():
     prompt = guidance('''List of ideas:{{#each ideas}}test{{this}}{{/each}}''', await_missing=True)
     assert str(prompt()) == "List of ideas:{{#each ideas}}test{{this}}{{/each}}"
@@ -28,11 +31,14 @@ def test_missing_list():
     #     return
     # assert False, "An error should have been raised because the list is missing!"
 
+
 def test_each_after_await():
     """Test an each loop when we are not executing."""
 
     prompt = guidance("Hello, {{name}}!{{await 'some_var'}}{{#each names}} {{this}}{{/each}}")
-    assert str(prompt(name="Guidance", names=["Bob", "Sue"])) == "Hello, Guidance!{{await 'some_var'}}{{#each names}} {{this}}{{/each}}"
+    assert str(prompt(name="Guidance",
+                      names=["Bob", "Sue"])) == "Hello, Guidance!{{await 'some_var'}}{{#each names}} {{this}}{{/each}}"
+
 
 def test_each_over_an_await():
     """Test an each loop when we are not executing."""
@@ -43,12 +49,14 @@ def test_each_over_an_await():
     full_execution = partial_execution(names=["Bob", "Sue"])
     assert str(full_execution) == "Hello, Guidance! Bob Sue"
 
+
 def test_each_parallel():
     """Test an each loop run in parallel."""
 
     program = guidance("Hello, {{name}}!{{#each names parallel=True hidden=True}} {{this}}{{/each}}")
     executed_program = program(name="Guidance", names=["Bob", "Sue", "Sam"])
     assert str(executed_program) == "Hello, Guidance!"
+
 
 def test_each_parallel_with_gen():
     """Test an each loop run in parallel with generations inside."""
@@ -63,18 +71,37 @@ def test_each_parallel_with_gen():
     for food in executed_program["foods"]:
         assert food in ["Pizza", "Burger", "Salad"]
 
+
 def test_each_parallel_with_gen_openai():
     """Test an each loop run in parallel with generations inside using OpenAI."""
 
-    llm = get_llm("openai:text-curie-001")
+    llm = get_llm("openai:gpt-3.5-turbo")
 
-    program = guidance("""Hello, {{name}}! Here are 5 names and their favorite food:
-{{#each names parallel=True hidden=True}}{{this}}: {{gen 'foods' list_append=True}}
-{{/each}}""", llm=llm)
+    program = guidance("""
+{{#user}}
+Hello, {{name}}! Here are 5 names:
+1. Ian
+2. Sam 
+3. Bob 
+4. Tom
+5. Sue
+{{/user}}
+
+{{#each names parallel=False hidden=False}}
+{{#user}}
+What is the number id of {{this}}? Write only the number.
+{{/user}}
+
+{{#assistant~}}
+{{gen 'ids' list_append=True}}
+{{~/assistant}}
+{{/each}}
+""", llm=llm)
     executed_program = program(name="Guidance", names=["Bob", "Sue", "Sam"])
-    assert str(executed_program) == "Hello, Guidance! Here are 5 names and their favorite food:\n"
-    assert len(executed_program["foods"]) == 3
-
+    print(str(executed_program))
+    print(executed_program["ids"], len(executed_program["ids"]))
+    assert executed_program["ids"] == ['3', '5', '2']
+    assert len(executed_program["ids"]) == 3
 # def test_with_stop():
 #     """ Test an each loop when we are not executing.
 #     """

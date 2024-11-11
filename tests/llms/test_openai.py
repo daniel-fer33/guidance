@@ -1,5 +1,47 @@
 import guidance
 from ..utils import get_llm
+import re
+
+
+def test_chat_model_pattern():
+    chat_models = [
+        'gpt-4o-mini',
+        'gpt-4o-mini-2024-07-18',
+        'gpt-4o',
+        'gpt-4o-2024-05-13',
+        'gpt-4-turbo',
+        'gpt-4-turbo-2024-04-09',
+        'gpt-4-turbo-preview',
+        'gpt-4-0125-preview',
+        'gpt-4-vision-preview',
+        'gpt-4-1106-vision-preview',
+        'gpt-4',
+        'gpt-4-0613',
+        'gpt-4-32k',
+        'gpt-4-32k-0613',
+        'gpt-3.5-turbo',
+        'gpt-3.5-turbo-instruct',
+        'gpt-3.5-turbo-16k-0613',
+        'o1-preview',
+        'o1-preview-2024-09-12',
+        'o1-mini',
+        'o1-mini-2024-09-12'
+    ]
+
+    chat_model_pattern = guidance.llms.OpenAI.chat_model_pattern
+    all_good = True
+    failed = []
+    for model in chat_models:
+        if re.match(chat_model_pattern, model):
+            chat_mode = True
+        else:
+            chat_mode = False
+            failed.append(model)
+
+        all_good = all_good and chat_mode
+
+    assert all_good, f"Model(s) not recognized: {failed}"
+
 
 def test_geneach_chat_gpt():
     """ Test a geneach loop with ChatGPT.
@@ -49,13 +91,13 @@ Indeed
     assert str(out) == '<|im_start|>system\nYou are a helpful assistant<|im_end|><|im_start|>user\nThis is great!<|im_end|><|im_start|>assistant\nIndeed<|im_end|>'
 
 def test_rest_nostream():
-    guidance.llm = get_llm('openai:text-davinci-003', endpoint="https://api.openai.com/v1/completions", rest_call=True)
+    guidance.llm = get_llm('openai:babbage-002', endpoint="https://api.openai.com/v1/completions", rest_call=True)
     a = guidance('''Hello,  my name is{{gen 'name' stream=False max_tokens=5}}''', stream=False)
     a = a()
     assert len(a['name']) > 0
 
 def test_rest_stream():
-    guidance.llm = get_llm('openai:text-davinci-003', endpoint="https://api.openai.com/v1/completions", rest_call=True)
+    guidance.llm = get_llm('openai:babbage-002', endpoint="https://api.openai.com/v1/completions", rest_call=True)
     a = guidance('''Hello,  my name is{{gen 'name' stream=True max_tokens=5}}''', stream=False)
     a = a()
     assert len(a['name']) > 0

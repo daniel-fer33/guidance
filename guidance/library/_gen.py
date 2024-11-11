@@ -7,9 +7,18 @@ from .._utils import escape_template_block, AsyncIter
 
 log = logging.getLogger(__name__)
 
+def load_alt_model(model_name):
+    from guidance import llms
+    if model_name.startswith("gpt-") or model_name.startswith("o1-"):
+        return llms.OpenAI(model_name, caching=False)
+    elif model_name.startswith("claude-"):
+        return llms.Anthropic(model_name, caching=False)
+    else:
+        return llms.Transformers(model_name, device='cpu', caching=False)
+
 async def gen(name=None, stop=None, stop_regex=None, save_stop_text=False, max_tokens=500, n=1, stream=None,
               temperature=0.0, top_p=1.0, logprobs=None, pattern=None, hidden=False, list_append=False,
-              save_prompt=False, token_healing=None, function_call="none", _parser_context=None, **llm_kwargs):
+              save_prompt=False, token_healing=None, function_call="none", llm_alt_model=None, _parser_context=None, **llm_kwargs):
     ''' Use the LLM to generate a completion.
 
     Parameters
@@ -136,6 +145,14 @@ async def gen(name=None, stop=None, stop_regex=None, save_stop_text=False, max_t
 
     assert parser.llm_session is not None, "You must set an LLM for the program to use (use the `llm=` parameter) before you can use the `gen` command."
 
+    # Replace LLM Session with Alternated LLM Model Session
+    prev_llm_session = parser.llm_session
+    if llm_alt_model is not None:
+        if isinstance(llm_alt_model, str):
+            parser.llm_session = load_alt_model(llm_alt_model).session(asynchronous=True)
+        else:
+            parser.llm_session = llm_alt_model.session(asynchronous=True)
+
     # call the LLM
     gen_obj = await parser.llm_session(
         variable_stack["@prefix"]+prefix, stop=stop, stop_regex=stop_regex, max_tokens=max_tokens, n=n, pattern=pattern,
@@ -204,7 +221,6 @@ async def gen(name=None, stop=None, stop_regex=None, save_stop_text=False, max_t
         if parser.should_stop:
             parser.executing = False
             parser.should_stop = False
-        return
     else:
         assert not isinstance(gen_obj, list), "Streaming is only supported for n=1"
         generated_values = [prefix+choice["text"]+suffix for choice in gen_obj["choices"]]
@@ -241,9 +257,12 @@ async def gen(name=None, stop=None, stop_regex=None, save_stop_text=False, max_t
                 else:
                     out += value
             variable_stack["@raw_prefix"] += out + "--}}{{!--" + f"GMARKERmany_generate_end${id}$" + "--}}"
-            return
             # return "{{!--GMARKERmany_generate_start$$}}" + "{{!--GMARKERmany_generate$$}}".join([v for v in generated_values]) + "{{!--GMARKERmany_generate_end$$}}"
             # return "".join([v for v in generated_values])
         else:
             # pop off the variable context we pushed since we are hidden
             variable_stack.pop()
+
+    # Restore previous llm session
+    if llm_alt_model is not None:
+        parser.llm_session = prev_llm_session

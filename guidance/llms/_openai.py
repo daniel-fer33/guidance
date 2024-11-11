@@ -1,4 +1,5 @@
 import openai
+from openai import AsyncOpenAI, AsyncStream
 import os
 import time
 import requests
@@ -13,6 +14,13 @@ import re
 import regex
 
 from ._llm import LLM, LLMSession, SyncSession
+
+
+# After the changes introduced in PR #1488 (https://github.com/openai/openai-python/pull/1488),
+# in some cases, pytest is not properly finalizing after all tests pass successfully.
+# This is a temporary of the issue
+from openai._base_client import get_platform
+PLATFORM = get_platform()
 
 
 class MalformedPromptException(Exception):
@@ -64,58 +72,67 @@ def prompt_to_messages(prompt):
 
     return messages
 
+
 async def add_text_to_chat_mode_generator(chat_mode):
     in_function_call = False
-    async for resp in chat_mode:
+    async for part in chat_mode:
+        resp = part.model_dump()
         if "choices" in resp:
             for c in resp['choices']:
-                
+
                 # move content from delta to text so we have a consistent interface with non-chat mode
                 found_content = False
-                if "content" in c['delta'] and c['delta']['content'] != "":
-                    found_content = True
-                    c['text'] = c['delta']['content']
+                if "content" in c['delta']:
+                    if c['delta']['content'] is None:
+                        c['delta']['content'] = ""
+                    if c['delta']['content'] != "":
+                        found_content = True
+                        c['text'] = c['delta']['content']
 
                 # capture function call data and convert to text again so we have a consistent interface with non-chat mode and open models
-                if "function_call" in c['delta']:
+                if "function_call" in c['delta'] and c['delta']['function_call'] is not None:
 
                     # build the start of the function call (the follows the syntax that GPT says it wants when we ask it, and will be parsed by the @function_detector)
                     if not in_function_call:
-                        start_val = "\n```typescript\nfunctions."+c['delta']['function_call']["name"]+"("
+                        start_val = "\n```typescript\nfunctions." + c['delta']['function_call']["name"] + "("
                         if not c['text']:
                             c['text'] = start_val
                         else:
                             c['text'] += start_val
                         in_function_call = True
-                    
+
                     # extend the arguments JSON string
                     val = c['delta']['function_call']["arguments"]
                     if 'text' in c:
                         c['text'] += val
                     else:
                         c['text'] = val
-                    
+
                 if not found_content and not in_function_call:
-                    break # the role markers are outside the generation in chat mode right now TODO: consider how this changes for uncontrained generation
+                    break  # the role markers are outside the generation in chat mode right now TODO: consider how this changes for uncontrained generation
             else:
                 yield resp
         else:
             yield resp
-    
+
     # close the function call if needed
     if in_function_call:
         yield {'choices': [{'text': ')```'}]}
 
+
 def add_text_to_chat_mode(chat_mode):
-    if isinstance(chat_mode, (types.AsyncGeneratorType, types.GeneratorType)):
+    if isinstance(chat_mode, (types.AsyncGeneratorType, types.GeneratorType, AsyncStream)):
         return add_text_to_chat_mode_generator(chat_mode)
     else:
+        chat_mode = chat_mode.model_dump()
         for c in chat_mode['choices']:
             c['text'] = c['message']['content']
         return chat_mode
 
+
 class OpenAI(LLM):
     llm_name: str = "openai"
+    chat_model_pattern: str = r'^(gpt-3\.5-turbo|gpt-4|gpt-4-vision|gpt-4-turbo|gpt-4o|gpt-4o-mini|o1-preview|o1-mini)(-\d+k)?(-\d{4})?(-vision)?(-instruct)?(-\d{2})?(-\d{2})?(-preview)?$'
 
     def __init__(self, model=None, caching=True, max_retries=5, max_calls_per_min=60,
                  api_key=None, api_type="open_ai", api_base=None, api_version=None, deployment_id=None,
@@ -149,9 +166,8 @@ class OpenAI(LLM):
 
         # auto detect chat completion mode
         if chat_mode == "auto":
-            # parse to determin if the model need to use the chat completion API
-            chat_model_pattern = r'^(gpt-3\.5-turbo|gpt-4)(-\d+k)?(-\d{4})?$'
-            if re.match(chat_model_pattern, model):
+            # parse to determine if the model need to use the chat completion API
+            if re.match(self.chat_model_pattern, model):
                 chat_mode = True
             else:
                 chat_mode = False
@@ -175,6 +191,13 @@ class OpenAI(LLM):
             api_base = os.environ.get("OPENAI_API_BASE", None) or os.environ.get("OPENAI_ENDPOINT", None) # ENDPOINT is deprecated
 
         import tiktoken
+
+        # TODO: Remove.
+        # Currently (17/09/2024) tiktoken doesn't support openai "o1" models.
+        # https://github.com/openai/tiktoken/issues/337
+        from tiktoken.model import MODEL_PREFIX_TO_ENCODING, MODEL_TO_ENCODING
+        MODEL_PREFIX_TO_ENCODING.update({"o1-": "o200k_base"})
+
         if encoding_name is None:
             encoding_name = tiktoken.encoding_for_model(model).name
         self._tokenizer = tiktoken.get_encoding(encoding_name)
@@ -347,7 +370,7 @@ class OpenAI(LLM):
         prev_org = openai.organization
         prev_type = openai.api_type
         prev_version = openai.api_version
-        prev_base = openai.api_base
+        prev_base = openai.base_url
         
         # set the params of the openai library if we have them
         if self.api_key is not None:
@@ -359,27 +382,31 @@ class OpenAI(LLM):
         if self.api_version is not None:
             openai.api_version = self.api_version
         if self.api_base is not None:
-            openai.api_base = self.api_base
+            openai.base_url = self.api_base
 
         assert openai.api_key is not None, "You must provide an OpenAI API key to use the OpenAI LLM. Either pass it in the constructor, set the OPENAI_API_KEY environment variable, or create the file ~/.openai_api_key with your key in it."
-        
+
+        client = AsyncOpenAI(api_key=self.api_key)
+        client._platform = PLATFORM
+
         if self.chat_mode:
             kwargs['messages'] = prompt_to_messages(kwargs['prompt'])
             del kwargs['prompt']
             del kwargs['echo']
             del kwargs['logprobs']
             # print(kwargs)
-            out = await openai.ChatCompletion.acreate(**kwargs)
+            out = await client.chat.completions.create(**kwargs)
             out = add_text_to_chat_mode(out)
         else:
-            out = await openai.Completion.acreate(**kwargs)
+            out = await client.completions.create(**kwargs)
+            out = out.model_dump()
         
         # restore the params of the openai library
         openai.api_key = prev_key
         openai.organization = prev_org
         openai.api_type = prev_type
         openai.api_version = prev_version
-        openai.api_base = prev_base
+        openai.base_url = prev_base
         
         return out
 
@@ -406,6 +433,20 @@ class OpenAI(LLM):
             'stop': kwargs.get("stop", None),
             "echo": kwargs.get("echo", False)
         }
+
+        # "o1-":
+        #  - 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.
+        #  - 'temperature' does not support 0 with this model. Only the default (1) value is supported.
+        #  - 'stop' is not supported with this model.
+        #  - 'stream' does not support true with this model. Only the default (false) value is supported.
+        if data['model'].startswith('o1-'):
+            data.update({
+                "max_completion_tokens": kwargs.get("max_completion_tokens", kwargs.get("max_tokens", None)),
+                "stream": False
+            })
+            del data['max_tokens']
+            del data['stop']
+
         if self.chat_mode:
             data['messages'] = prompt_to_messages(data['prompt'])
             del data['prompt']
@@ -593,7 +634,8 @@ def extract_function_defs(prompt):
 
 # Define a deque to store the timestamps of the calls
 class OpenAISession(LLMSession):
-    async def __call__(self, prompt, stop=None, stop_regex=None, temperature=None, n=1, max_tokens=1000, logprobs=None,
+    async def __call__(self, prompt, stop=None, stop_regex=None, temperature=None, n=1,
+                       max_tokens=1000, max_completion_tokens=1000, logprobs=None,
                        top_p=1.0, echo=False, logit_bias=None, token_healing=None, pattern=None, stream=None,
                        cache_seed=0, caching=None, **completion_kwargs):
         """ Generate a completion of the given prompt.
@@ -639,13 +681,14 @@ class OpenAISession(LLMSession):
             functions = extract_function_defs(prompt)
 
             fail_count = 0
+            error_msg = None
             while True:
                 try_again = False
                 try:
                     self.llm.add_call()
                     call_args = {
                         "model": self.llm.model_name,
-                        "deployment_id": self.llm.deployment_id,
+                        #"deployment_id": self.llm.deployment_id,  # Deprecated
                         "prompt": prompt,
                         "max_tokens": max_tokens,
                         "temperature": temperature,
@@ -657,6 +700,20 @@ class OpenAISession(LLMSession):
                         "stream": stream,
                         **completion_kwargs
                     }
+
+                    # "o1-":
+                    #  - 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.
+                    #  - 'temperature' does not support 0 with this model. Only the default (1) value is supported.
+                    #  - 'stop' is not supported with this model.
+                    #  - 'stream' does not support true with this model. Only the default (false) value is supported.
+                    if call_args['model'].startswith('o1-'):
+                        call_args.update({
+                            "max_completion_tokens": max_completion_tokens,
+                            "stream": False
+                        })
+                        del call_args['max_tokens']
+                        del call_args['stop']
+
                     if functions is None:
                         if "function_call" in call_args:
                             del call_args["function_call"]
@@ -666,16 +723,33 @@ class OpenAISession(LLMSession):
                         call_args["logit_bias"] = {str(k): v for k,v in logit_bias.items()} # convert keys to strings since that's the open ai api's format
                     out = await self.llm.caller(**call_args)
 
-                except (openai.error.RateLimitError, openai.error.ServiceUnavailableError, openai.error.APIError, openai.error.Timeout):
+                    # "o1-":
+                    # Response will be empty if couldn't complete the request within the 'max_completion_tokens'
+                    # For now, we'll raise an error if this happens
+                    if call_args['model'].startswith('o1-'):
+                        if out['choices'][0].get('finish_reason', None) == 'length' \
+                                and out['choices'][0].get('message', {}).get('content', None) == '':
+                            raise Exception(f"Model 'o1-' returned empty response because couldn't "
+                                            f"complete the request within 'max_completion_tokens': "
+                                            f"{call_args['max_completion_tokens']}")
+
+                except (openai.RateLimitError,
+                        openai.APIConnectionError,
+                        openai.APIStatusError,
+                        openai.APIError,
+                        openai.APITimeoutError) as err:
                     await asyncio.sleep(3)
+                    error_msg = err.message
                     try_again = True
                     fail_count += 1
-                
+
                 if not try_again:
                     break
 
                 if fail_count > self.llm.max_retries:
-                    raise Exception(f"Too many (more than {self.llm.max_retries}) OpenAI API errors in a row!")
+                    raise Exception(
+                        f"Too many (more than {self.llm.max_retries}) OpenAI API errors in a row! \n"
+                        f"Last error message: {error_msg}")
 
             if stream:
                 return self.llm.stream_then_save(out, key, stop_regex, n)
@@ -760,7 +834,7 @@ class MSALOpenAI(OpenAI):
                 raise ValueError(
                     "Fail to create device flow. Err: %s" % json.dumps(flow, indent=4))
 
-            print(flow["message"])
+            # print(flow["message"])
 
             result = self._app.acquire_token_by_device_flow(flow)
 

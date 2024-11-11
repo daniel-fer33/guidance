@@ -63,7 +63,7 @@ You are a helpful assistant.<|im_end|>
     prompt = prompt(user_text='Please help')
     assert len(prompt['conversation']) == 3
 
-@pytest.mark.parametrize("llm", ["transformers:gpt2", "openai:text-curie-001"])
+@pytest.mark.parametrize("llm", ["transformers:gpt2", ])
 def test_stream_loop(llm):
     llm = get_llm(llm)
     program = guidance("""Generate a list of 5 company names:
@@ -78,7 +78,7 @@ def test_stream_loop(llm):
     assert len(partials[0]) < 5
     assert len(partials[-1]) == 5
 
-@pytest.mark.parametrize("llm", ["transformers:gpt2", "openai:text-curie-001"])
+@pytest.mark.parametrize("llm", ["transformers:gpt2", ])
 def test_stream_loop_async(llm):
     """ Test the behavior of `stream=True` for an openai chat endpoint.
     """
@@ -92,6 +92,57 @@ def test_stream_loop_async(llm):
         program = guidance("""Generate a list of 5 company names:
 {{#geneach 'companies' num_iterations=5~}}
 {{@index}}. "{{gen 'this' max_tokens=5}}"
+{{/geneach}}""", llm=llm)
+
+        partials = []
+        async for p in program(stream=True, async_mode=True, silent=True):
+            partials.append(p.get("companies", []))
+        assert len(partials) > 1
+        assert len(partials[0]) < 5
+        assert len(partials[-1]) == 5
+    loop.run_until_complete(f())
+
+@pytest.mark.parametrize("llm", ["openai:gpt-3.5-turbo", ])
+def test_stream_loop(llm):
+    llm = get_llm(llm)
+    program = guidance("""
+{{~#user~}}
+Generate a list of 5 company names.
+{{~/user~}}
+
+{{#geneach 'companies' num_iterations=5~}}
+{{#assistant~}}
+{{gen 'this' max_tokens=5}}
+{{~/assistant}}
+{{/geneach}}""", llm=llm)
+
+    partials = []
+    for p in program(stream=True, silent=True):
+        partials.append(p.get("companies", []))
+    assert len(partials) > 1
+    assert len(partials[0]) < 5
+    assert len(partials[-1]) == 5
+
+@pytest.mark.parametrize("llm", ["openai:gpt-3.5-turbo", ])
+def test_stream_loop_async(llm):
+    """ Test the behavior of `stream=True` for an openai chat endpoint.
+    """
+
+    import asyncio
+    loop = asyncio.new_event_loop()
+
+    llm = get_llm(llm)
+
+    async def f():
+        program = guidance("""
+{{~#user~}}
+Generate a list of 5 company names.
+{{~/user~}}
+
+{{#geneach 'companies' num_iterations=5~}}
+{{#assistant~}}
+{{gen 'this' max_tokens=5}}
+{{~/assistant}}
 {{/geneach}}""", llm=llm)
 
         partials = []
