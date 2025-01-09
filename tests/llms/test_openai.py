@@ -44,6 +44,13 @@ def test_chat_model_pattern():
     assert all_good, f"Model(s) not recognized: {failed}"
 
 
+@pytest.mark.parametrize("model_name", [
+    "gpt-3.5-turbo", "gpt-4o-mini", "chatgpt-4o-latest", "o1-preview", "o1-mini",
+])
+def test_model_loading(model_name):
+    _ = guidance.llms.OpenAI(model=model_name)
+
+
 def test_geneach_chat_gpt():
     """ Test a geneach loop with ChatGPT.
     """
