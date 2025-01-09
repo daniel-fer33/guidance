@@ -1,6 +1,7 @@
 import guidance
 from ..utils import get_llm
 import re
+import pytest
 
 
 def test_chat_model_pattern():
